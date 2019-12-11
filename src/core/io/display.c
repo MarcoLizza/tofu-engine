@@ -33,7 +33,9 @@
 #include <stdlib.h>
 
 #if PLATFORM_ID == PLATFORM_WINDOWS
-  #define __GL_BGRA_PALETTE__
+  #define PIXEL_FORMAT    GL_BGRA
+#else
+  #define PIXEL_FORMAT    GL_RGBA
 #endif
 
 typedef struct _Program_Data_t {
@@ -242,15 +244,6 @@ static void prepare_pbo_callback_N(Display_t *display)
 {
     const GL_Surface_t *surface = &display->gl.buffer;
 
-#ifdef __GL_BGRA_PALETTE__
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-#else
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#endif
-
-    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
-
 #ifdef __GL_AVOID_STALL_BY_ORPHANING__
     glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
 #endif
@@ -259,6 +252,11 @@ static void prepare_pbo_callback_N(Display_t *display)
         GL_surface_to_rgba(surface, &display->palette, vram);
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     }
+
+    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
+
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
 }
 
 static void prepare_pbo_callback_1(Display_t *display)
@@ -274,14 +272,7 @@ static void prepare_pbo_callback_1(Display_t *display)
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     }
 
-    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
-
-#ifdef __GL_BGRA_PALETTE__
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-#else
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#endif
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
 }
 
 static void prepare_callback(Display_t *display)
@@ -290,12 +281,7 @@ static void prepare_callback(Display_t *display)
 
     GL_surface_to_rgba(surface, &display->palette, display->vram);
 
-#ifdef __GL_BGRA_PALETTE__
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, display->vram);
-#else
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
-#endif
-
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, PIXEL_FORMAT, GL_UNSIGNED_BYTE, display->vram);
 }
 
 bool Display_initialize(Display_t *display, const Display_Configuration_t *configuration)
@@ -435,11 +421,7 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0); // Disable mip-mapping
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
-#ifdef __GL_BGRA_PALETTE__
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, display->configuration.width, display->configuration.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#else
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, display->configuration.width, display->configuration.height, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-#endif
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, display->configuration.width, display->configuration.height, 0, PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
     Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> texture created w/ id #%d (%dx%d)", display->vram_texture, display->configuration.width, display->configuration.height);
 
     for (size_t i = 0; i < Display_Programs_t_CountOf; ++i) {
