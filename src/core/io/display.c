@@ -237,7 +237,8 @@ static void size_callback(GLFWwindow* window, int width, int height)
 #endif
 }
 
-static void prepare_pbo_callback(Display_t *display)
+// Don't use the buffer right after triggering the upload, or it will stall waiting for the copy to finish.
+static void prepare_pbo_callback_N(Display_t *display)
 {
     const GL_Surface_t *surface = &display->gl.buffer;
 
@@ -260,6 +261,29 @@ static void prepare_pbo_callback(Display_t *display)
     }
 }
 
+static void prepare_pbo_callback_1(Display_t *display)
+{
+    const GL_Surface_t *surface = &display->gl.buffer;
+
+#ifdef __GL_AVOID_STALL_BY_ORPHANING__
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
+#endif
+    GL_Color_t *vram = (GL_Color_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+    if (vram) {
+        GL_surface_to_rgba(surface, &display->palette, vram);
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    }
+
+    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
+
+#ifdef __GL_BGRA_PALETTE__
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+#else
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#endif
+}
+
 static void prepare_callback(Display_t *display)
 {
     const GL_Surface_t *surface = &display->gl.buffer;
@@ -271,6 +295,7 @@ static void prepare_callback(Display_t *display)
 #else
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
 #endif
+
 }
 
 bool Display_initialize(Display_t *display, const Display_Configuration_t *configuration)
@@ -388,7 +413,7 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
 
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[0]);
 
-        display->prepare = prepare_pbo_callback;
+        display->prepare = DISPLAY_VRAM_BUFFERS_COUNT == 1 ? prepare_pbo_callback_1 : prepare_pbo_callback_N;
     }
 
     glGenTextures(1, &display->vram_texture); //allocate the memory for texture
