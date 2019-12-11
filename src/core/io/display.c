@@ -290,6 +290,8 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
 
     display->configuration = *configuration;
 
+    Log_write(LOG_LEVELS_INFO, "<DISPLAY> GLFW: %s", glfwGetVersionString());
+
     glfwSetErrorCallback(error_callback);
 
     if (!glfwInit()) {
