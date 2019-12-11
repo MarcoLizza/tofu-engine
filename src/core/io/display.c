@@ -195,6 +195,8 @@ static void size_callback(GLFWwindow* window, int width, int height)
     Log_write(LOG_LEVELS_DEBUG, "<GLFW> projection/model matrix reset, going otho-2D");
 
     glEnable(GL_TEXTURE_2D); // Default, always enabled.
+    glDisable(GL_LIGHTING);
+    glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST); // We just don't need it!
     glDisable(GL_STENCIL_TEST); // Ditto.
     glDisable(GL_BLEND); // Blending is disabled.
@@ -309,10 +311,11 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
             glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
             Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> buffers w/ id #%d initialized (%d bytes)", display->vram_buffers[i], display->vram_size);
         }
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+//        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
-        display->vram_buffer_index = 0;
         display->vram = NULL;
+        display->vram_buffer_index = 0;
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
     } else {
         Log_write(LOG_LEVELS_WARNING, "<DISPLAY> PBOs not supported, allocating VRAM buffer");
         display->vram = malloc(display->vram_size);
@@ -345,7 +348,7 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, display->configuration.width, display->configuration.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    //glBindTexture(GL_TEXTURE_2D, 0);
     Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> texture created w/ id #%d (%dx%d)", display->vram_texture, display->configuration.width, display->configuration.height);
 
     for (size_t i = 0; i < Display_Programs_t_CountOf; ++i) {
@@ -388,6 +391,7 @@ void Display_terminate(Display_t *display)
         program_delete(&display->programs[i]);
     }
 
+    glBindTexture(GL_TEXTURE_2D, 0);
     glDeleteTextures(1, &display->vram_texture);
     Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> texture w/ id #%d deleted", display->vram_texture);
 
@@ -423,7 +427,10 @@ void Display_present(Display_t *display)
 {
     const GL_Surface_t *surface = &display->gl.buffer;
 
-    glBindTexture(GL_TEXTURE_2D, display->vram_texture);
+static int count = 100;
+static double sum = 0.0;
+double s = glfwGetTime();
+//    glBindTexture(GL_TEXTURE_2D, display->vram_texture);
 
     if (display->vram) {
         GL_surface_to_rgba(surface, &display->palette, display->vram);
@@ -434,10 +441,22 @@ void Display_present(Display_t *display)
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
 #endif
     } else {
-        size_t current = display->vram_buffer_index;
-        size_t next = (current + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+//        size_t current = display->vram_buffer_index;
+//        size_t next = (current + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
 
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[current]);
+//        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[current]);
+
+#ifdef __AVOID_STALL_BY_ORPHANING__
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
+#endif
+        GL_Color_t *vram = (GL_Color_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+        if (vram) {
+            GL_surface_to_rgba(surface, &display->palette, vram);
+            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+        }
+
+        display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
 
 #ifdef __GL_BGRA_PALETTE__
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
@@ -445,18 +464,9 @@ void Display_present(Display_t *display)
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 #endif
 
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[next]);
+//        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
-        GL_Color_t *vram = (GL_Color_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-        if (vram) {
-            GL_surface_to_rgba(surface, &display->palette, vram);
-            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-        }
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-        display->vram_buffer_index = next;
+//        display->vram_buffer_index = next;
     }
 
     glBegin(GL_TRIANGLE_STRIP);
@@ -472,7 +482,14 @@ void Display_present(Display_t *display)
         glVertex2f(display->vram_destination.x1, display->vram_destination.y1);
     glEnd();
 
-    glBindTexture(GL_TEXTURE_2D, 0);
+//    glBindTexture(GL_TEXTURE_2D, 0);
+double e = glfwGetTime();
+sum += e - s;
+if (--count == 0) {
+    Log_write(LOG_LEVELS_TRACE, "%f", sum / 10.0);
+    sum = 0.0;
+    count = 100;
+}
 
     glfwSwapBuffers(display->window);
 }
