@@ -224,12 +224,8 @@ static void size_callback(GLFWwindow* window, int width, int height)
     Log_write(LOG_LEVELS_DEBUG, "<GLFW> projection/model matrix reset, going otho-2D");
 
     glEnable(GL_TEXTURE_2D); // Default, always enabled.
-    glDisable(GL_LIGHTING);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST); // We just don't need it!
-    glDisable(GL_STENCIL_TEST); // Ditto.
-    glDisable(GL_BLEND); // Blending is disabled.
-    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_DITHER);
+    glDisable(GL_MULTISAMPLE);
     Log_write(LOG_LEVELS_DEBUG, "<GLFW> optimizing OpenGL features");
 
 #ifdef __DEBUG_TRIANGLES_WINDING__
