@@ -53,6 +53,8 @@ typedef struct _Display_Configuration_t {
     bool hide_cursor;
 } Display_Configuration_t;
 
+#define DISPLAY_VRAM_BUFFERS_COUNT  2
+
 typedef struct _Display_t {
     Display_Configuration_t configuration;
 
@@ -61,6 +63,9 @@ typedef struct _Display_t {
     size_t physical_width, physical_height;
 
     GL_Color_t *vram; // Temporary buffer to create the OpenGL texture from `GL_Pixel_t` array.
+    GLuint vram_size;
+    GLuint vram_buffers[DISPLAY_VRAM_BUFFERS_COUNT];
+    size_t vram_buffer_index;
     GLuint vram_texture;
     GL_Quad_t vram_destination;
 
