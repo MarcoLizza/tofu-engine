@@ -24,12 +24,17 @@
 
 #include <config.h>
 #include <core/engine.h>
+#include <core/platform.h>
 #include <libs/log.h>
 #include <libs/imath.h>
 #include <libs/stb.h>
 
 #include <memory.h>
 #include <stdlib.h>
+
+#if PLATFORM_ID == PLATFORM_WINDOWS
+  #define __GL_BGRA_PALETTE__
+#endif
 
 typedef struct _Program_Data_t {
     const char *vertex_shader;
@@ -409,7 +414,11 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0); // Disable mip-mapping
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, display->configuration.width, display->configuration.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#ifdef __GL_BGRA_PALETTE__
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, display->configuration.width, display->configuration.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#else
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, display->configuration.width, display->configuration.height, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+#endif
     Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> texture created w/ id #%d (%dx%d)", display->vram_texture, display->configuration.width, display->configuration.height);
 
     for (size_t i = 0; i < Display_Programs_t_CountOf; ++i) {
