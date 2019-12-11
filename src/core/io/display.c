@@ -375,7 +375,7 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
 
     display->vram_size = display->configuration.width * display->configuration.width * sizeof(GL_Color_t);
 
-    if (!glfwExtensionSupported("GL_ARB_pixel_buffer_object")) {
+    if (!glfwExtensionSupported("GL_ARB_pixel_buffer_object")) { // http://www.songho.ca/opengl/gl_pbo.html
         Log_write(LOG_LEVELS_WARNING, "<DISPLAY> pixel-buffers not supported, allocating VRAM buffer");
         display->vram = malloc(display->vram_size);
         if (!display->vram) {
