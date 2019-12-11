@@ -236,6 +236,42 @@ static void size_callback(GLFWwindow* window, int width, int height)
 #endif
 }
 
+static void prepare_pbo_callback(Display_t *display)
+{
+    const GL_Surface_t *surface = &display->gl.buffer;
+
+#ifdef __GL_BGRA_PALETTE__
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+#else
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#endif
+
+    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
+
+#ifdef __GL_AVOID_STALL_BY_ORPHANING__
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
+#endif
+    GL_Color_t *vram = (GL_Color_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+    if (vram) {
+        GL_surface_to_rgba(surface, &display->palette, vram);
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    }
+}
+
+static void prepare_callback(Display_t *display)
+{
+    const GL_Surface_t *surface = &display->gl.buffer;
+
+    GL_surface_to_rgba(surface, &display->palette, display->vram);
+
+#ifdef __GL_BGRA_PALETTE__
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, display->vram);
+#else
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
+#endif
+}
+
 bool Display_initialize(Display_t *display, const Display_Configuration_t *configuration)
 {
     *display = (Display_t){ 0 };
@@ -338,6 +374,8 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
             return false;
         }
         Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> VRAM allocated at #%p (%dx%d)", display->vram, display->configuration.width, display->configuration.height);
+
+        display->prepare = prepare_callback;
     } else {
         glGenBuffers(DISPLAY_VRAM_BUFFERS_COUNT, display->vram_buffers); // TODO: check for errors.
         Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> #%d pixel-buffers created", DISPLAY_VRAM_BUFFERS_COUNT);
@@ -348,6 +386,8 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
         }
 
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[0]);
+
+        display->prepare = prepare_pbo_callback;
     }
 
     glGenTextures(1, &display->vram_texture); //allocate the memory for texture
@@ -457,35 +497,7 @@ void Display_update(Display_t *display, float delta_time)
 
 void Display_present(Display_t *display)
 {
-    const GL_Surface_t *surface = &display->gl.buffer;
-
-    if (display->vram) {
-        GL_surface_to_rgba(surface, &display->palette, display->vram);
-
-#ifdef __GL_BGRA_PALETTE__
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, display->vram);
-#else
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
-#endif
-    } else {
-#ifdef __GL_BGRA_PALETTE__
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-#else
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#endif
-
-        display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
-
-#ifdef __GL_AVOID_STALL_BY_ORPHANING__
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
-#endif
-        GL_Color_t *vram = (GL_Color_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-        if (vram) {
-            GL_surface_to_rgba(surface, &display->palette, vram);
-            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-        }
-    }
+    display->prepare(display);
 
     glBegin(GL_TRIANGLE_STRIP);
 //        glColor4ub(255, 255, 255, 255); // Change this color to "tint".

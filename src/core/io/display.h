@@ -62,6 +62,7 @@ typedef struct _Display_t {
     size_t window_width, window_height, window_scale;
     size_t physical_width, physical_height;
 
+    void (*prepare)(struct _Display_t *);
     GL_Color_t *vram; // Temporary buffer to create the OpenGL texture from `GL_Pixel_t` array.
     GLuint vram_size;
     GLuint vram_buffers[DISPLAY_VRAM_BUFFERS_COUNT];
