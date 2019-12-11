@@ -123,6 +123,30 @@ static void load_icon(GLFWwindow *window, const uint8_t *buffer, size_t buffer_s
     stbi_image_free(data);
 }
 */
+
+#ifdef DEBUG
+static bool has_errors()
+{
+    bool result = false;
+    for (GLenum code = glGetError(); code != GL_NO_ERROR; code = glGetError()) {
+        const char *message = "UKNOWN";
+        switch (code) {
+            case GL_INVALID_ENUM: { message = "INVALID_ENUM"; } break;
+            case GL_INVALID_VALUE: { message = "INVALID_VALUE"; } break;
+            case GL_INVALID_OPERATION: { message = "INVALID_OPERATION"; } break;
+            case 0x506: { message = "INVALID_FRAMEBUFFER_OPERATION"; } break;
+            case GL_OUT_OF_MEMORY: { message = "OUT_OF_MEMORY"; } break;
+            case GL_STACK_UNDERFLOW: { message = "STACK_UNDERFLOW"; } break;
+            case GL_STACK_OVERFLOW: { message = "STACK_OVERFLOW"; } break;
+        }
+        Log_write(LOG_LEVELS_ERROR, "<DISPLAY> OpenGL error #%04x: `GL_%s`", code, message);
+
+        result = true;
+    }
+    return result;
+}
+#endif
+
 static bool compute_size(Display_t *display, const Display_Configuration_t *configuration, GL_Point_t *position)
 {
     int display_width, display_height;
@@ -303,18 +327,8 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
 
     display->vram_size = display->configuration.width * display->configuration.width * sizeof(GL_Color_t);
 
-    if (glfwExtensionSupported("GL_ARB_pixel_buffer_object")) {
-        glGenBuffers(DISPLAY_VRAM_BUFFERS_COUNT, display->vram_buffers);
-        Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> #%d buffers created", DISPLAY_VRAM_BUFFERS_COUNT);
-        for (size_t i = 0; i < DISPLAY_VRAM_BUFFERS_COUNT; ++i) {
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[i]);
-            glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
-            Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> buffers w/ id #%d initialized (%d bytes)", display->vram_buffers[i], display->vram_size);
-        }
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[0]);
-    } else {
-        Log_write(LOG_LEVELS_WARNING, "<DISPLAY> PBOs not supported, allocating VRAM buffer");
+    if (!glfwExtensionSupported("GL_ARB_pixel_buffer_object")) {
+        Log_write(LOG_LEVELS_WARNING, "<DISPLAY> pixel-buffers not supported, allocating VRAM buffer");
         display->vram = malloc(display->vram_size);
         if (!display->vram) {
             Log_write(LOG_LEVELS_FATAL, "<DISPLAY> can't allocate VRAM buffer");
@@ -324,11 +338,22 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
             return false;
         }
         Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> VRAM allocated at #%p (%dx%d)", display->vram, display->configuration.width, display->configuration.height);
+    } else {
+        glGenBuffers(DISPLAY_VRAM_BUFFERS_COUNT, display->vram_buffers); // TODO: check for errors.
+        Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> #%d buffers created", DISPLAY_VRAM_BUFFERS_COUNT);
+        for (size_t i = 0; i < DISPLAY_VRAM_BUFFERS_COUNT; ++i) {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[i]);
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
+            Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> buffers w/ id #%d initialized (%d bytes)", display->vram_buffers[i], display->vram_size);
+        }
+
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[0]);
     }
 
     glGenTextures(1, &display->vram_texture); //allocate the memory for texture
     if (display->vram_texture == 0) {
         Log_write(LOG_LEVELS_FATAL, "<DISPLAY> can't allocate VRAM texture");
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         glDeleteBuffers(DISPLAY_VRAM_BUFFERS_COUNT, display->vram_buffers);
         free(display->vram);
         GL_context_delete(&display->gl);
@@ -360,7 +385,9 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
             for (size_t j = 0; j < i; ++j) {
                 program_delete(&display->programs[j]);
             }
+            glBindTexture(GL_TEXTURE_2D, 0);
             glDeleteTextures(1, &display->vram_texture);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
             glDeleteBuffers(DISPLAY_VRAM_BUFFERS_COUNT, display->vram_buffers);
             free(display->vram);
             GL_context_delete(&display->gl);
@@ -374,6 +401,10 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
     }
 
     Display_shader(display, NULL); // Use pass-thru at the beginning.
+
+#ifdef DEBUG
+    has_errors();
+#endif
 
     return true;
 }
@@ -418,6 +449,10 @@ void Display_update(Display_t *display, float delta_time)
 {
     display->time += (GLfloat)delta_time;
     program_send(display->active_program, UNIFORM_TIME, PROGRAM_UNIFORM_FLOAT, 1, &display->time);
+
+#ifdef DEBUG
+    has_errors();
+#endif
 }
 
 void Display_present(Display_t *display)
@@ -436,7 +471,7 @@ double s = glfwGetTime();
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
 #endif
     } else {
-#ifdef __AVOID_STALL_BY_ORPHANING__
+#ifdef __GL_AVOID_STALL_BY_ORPHANING__
         glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
 #endif
         GL_Color_t *vram = (GL_Color_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
@@ -528,6 +563,10 @@ void Display_shader(Display_t *display, const char *effect)
     GLfloat resolution[] = { (GLfloat)display->window_width, (GLfloat)display->window_height };
     program_send(display->active_program, UNIFORM_RESOLUTION, PROGRAM_UNIFORM_VEC2, 1, resolution);
     Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> program #%p initialized", display->active_program);
+
+#ifdef DEBUG
+    has_errors(); // Purge OpenGL error queue, shader uniforms could cause errors (undefined).
+#endif
 }
 
 void Display_palette(Display_t *display, const GL_Palette_t *palette)
