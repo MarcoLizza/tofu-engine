@@ -340,7 +340,7 @@ bool Display_initialize(Display_t *display, const Display_Configuration_t *confi
         Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> VRAM allocated at #%p (%dx%d)", display->vram, display->configuration.width, display->configuration.height);
     } else {
         glGenBuffers(DISPLAY_VRAM_BUFFERS_COUNT, display->vram_buffers); // TODO: check for errors.
-        Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> #%d buffers created", DISPLAY_VRAM_BUFFERS_COUNT);
+        Log_write(LOG_LEVELS_DEBUG, "<DISPLAY> #%d pixel-buffers created", DISPLAY_VRAM_BUFFERS_COUNT);
         for (size_t i = 0; i < DISPLAY_VRAM_BUFFERS_COUNT; ++i) {
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[i]);
             glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
@@ -459,9 +459,6 @@ void Display_present(Display_t *display)
 {
     const GL_Surface_t *surface = &display->gl.buffer;
 
-static int count = 100;
-static double sum = 0.0;
-double s = glfwGetTime();
     if (display->vram) {
         GL_surface_to_rgba(surface, &display->palette, display->vram);
 
@@ -471,6 +468,15 @@ double s = glfwGetTime();
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, display->vram);
 #endif
     } else {
+#ifdef __GL_BGRA_PALETTE__
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+#else
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#endif
+
+        display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
+
 #ifdef __GL_AVOID_STALL_BY_ORPHANING__
         glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
 #endif
@@ -479,15 +485,6 @@ double s = glfwGetTime();
             GL_surface_to_rgba(surface, &display->palette, vram);
             glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
         }
-
-        display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
-
-#ifdef __GL_BGRA_PALETTE__
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-#else
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#endif
     }
 
     glBegin(GL_TRIANGLE_STRIP);
@@ -502,14 +499,6 @@ double s = glfwGetTime();
         glTexCoord2f(1, 1);
         glVertex2f(display->vram_destination.x1, display->vram_destination.y1);
     glEnd();
-
-double e = glfwGetTime();
-sum += e - s;
-if (--count == 0) {
-    Log_write(LOG_LEVELS_TRACE, "%f", sum / 10.0);
-    sum = 0.0;
-    count = 100;
-}
 
     glfwSwapBuffers(display->window);
 }
