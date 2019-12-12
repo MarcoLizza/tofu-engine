@@ -92,6 +92,8 @@ bool Engine_initialize(Engine_t *engine, const char *base_path)
 {
     *engine = (Engine_t){ 0 }; // Ensure is cleared at first.
 
+    // TODO: display engine version!
+
     FS_initialize(&engine->file_system, base_path);
 
     configure(&engine->file_system, &engine->configuration);

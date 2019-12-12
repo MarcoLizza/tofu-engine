@@ -226,14 +226,23 @@ static void size_callback(GLFWwindow* window, int width, int height)
     Log_write(LOG_LEVELS_DEBUG, "<GLFW> projection/model matrix reset, going otho-2D");
 
     glEnable(GL_TEXTURE_2D); // Default, always enabled.
-    glDisable(GL_LIGHTING);
+/*
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_AUTO_NORMAL);
+    glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_BLEND);
-    glDisable(GL_ALPHA_TEST);
     glDisable(GL_DITHER);
+    glDisable(GL_FOG);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_LINE_SMOOTH);
+    glDisable(GL_LINE_STIPPLE);
+    glDisable(GL_MULTISAMPLE);
+    glDisable(GL_POINT_SMOOTH);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+*/
+    glDisable(GL_DITHER); // Disable them, as default state is "enabled".
     glDisable(GL_MULTISAMPLE);
     Log_write(LOG_LEVELS_DEBUG, "<GLFW> optimizing OpenGL features");
 
@@ -251,6 +260,11 @@ static void prepare_pbo_callback_N(Display_t *display)
 {
     const GL_Surface_t *surface = &display->gl.buffer;
 
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
+
+    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
+
 #ifdef __GL_AVOID_STALL_BY_ORPHANING__
     glBufferData(GL_PIXEL_UNPACK_BUFFER, display->vram_size, 0, GL_STREAM_DRAW);
 #endif
@@ -259,11 +273,6 @@ static void prepare_pbo_callback_N(Display_t *display)
         GL_surface_to_rgba(surface, &display->palette, vram);
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     }
-
-    display->vram_buffer_index = (display->vram_buffer_index + 1) % DISPLAY_VRAM_BUFFERS_COUNT;
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, display->vram_buffers[display->vram_buffer_index]);
-
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width, surface->height, PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
 }
 
 static void prepare_pbo_callback_1(Display_t *display)
